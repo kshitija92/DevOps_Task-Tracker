@@ -1,0 +1,5 @@
+com\example\tasktracker\service\TrackerService.class
+com\example\tasktracker\model\WorkTask.class
+com\example\tasktracker\model\ResourceMember.class
+com\example\tasktracker\controller\WebController.class
+com\example\tasktracker\TaskTrackerApplication.class

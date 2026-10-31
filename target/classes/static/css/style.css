@@ -1,0 +1,6 @@
+body { background:#f4f7fb; min-height:100vh; }
+.card { border:0; border-radius:1rem; box-shadow:0 5px 22px rgba(22,34,51,.06); }
+.stat { font-size:1.8rem; font-weight:700; }
+.page-title { font-weight:750; letter-spacing:-.03em; }
+.table thead th { color:#65748b; font-size:.78rem; text-transform:uppercase; letter-spacing:.05em; }
+.form-label { font-weight:600; }
