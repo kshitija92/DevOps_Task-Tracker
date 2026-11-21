@@ -16,3 +16,9 @@ Open: http://localhost:8080
 ## Important
 This project intentionally uses Java in-memory collections, not MySQL, PostgreSQL, H2, or another database.
 Data is lost when the application stops or restarts. Bootstrap is loaded from a CDN.
+
+
+
+## Jenkins Webhook and S3 Automation
+
+This project uses Jenkins to build Maven artifacts and upload them to AWS S3.
