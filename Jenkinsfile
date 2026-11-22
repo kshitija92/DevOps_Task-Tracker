@@ -145,35 +145,35 @@ pipeline {
         }
 
         // 8. Authenticate with AWS and ECR
-        stage('Login to ECR') {
-            steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key-id',
-                           variable: 'AWS_ACCESS_KEY_ID'),
+stage('Login to ECR') {
+    steps {
+        withCredentials([
+            string(credentialsId: 'aws-access-key-id',
+                   variable: 'AWS_ACCESS_KEY_ID'),
 
-                    string(credentialsId: 'aws-secret-access-key',
-                           variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    powershell '''
-                        aws sts get-caller-identity
+            string(credentialsId: 'aws-secret-access-key',
+                   variable: 'AWS_SECRET_ACCESS_KEY')
+        ]) {
+            powershell '''
+                $registry = "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com"
 
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "AWS authentication failed"
-                        }
+                $password = aws ecr get-login-password --region $env:AWS_REGION
 
-                        $registry = "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com"
-
-                        aws ecr get-login-password --region $env:AWS_REGION | docker login --username AWS --password-stdin $registry
-
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "ECR login failed"
-                        }
-
-                        Write-Host "ECR login successful"
-                    '''
+                if ($LASTEXITCODE -ne 0 -or -not $password) {
+                    throw "Unable to retrieve ECR login password"
                 }
-            }
+
+                docker login $registry --username AWS --password $password
+
+                if ($LASTEXITCODE -ne 0) {
+                    throw "ECR login failed"
+                }
+
+                Write-Host "ECR login successful"
+            '''
         }
+    }
+}
 
         // 9. Tag Docker Image for ECR
         stage('Tag Docker Image') {
