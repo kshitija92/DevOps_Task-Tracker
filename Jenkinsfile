@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -15,7 +16,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 git branch: 'development',
-                    url: 'https://github.com/kshitija92/DevOps_Task-Tracker.git'
+                    url: "${env.GITHUB_REPO}"
             }
         }
 
@@ -27,7 +28,7 @@ pipeline {
             }
         }
 
-        // 3. Generate build-specific artifact and image version
+        // 3. Prepare build-specific artifact and Docker version
         stage('Prepare Artifact') {
             steps {
                 script {
@@ -94,7 +95,6 @@ pipeline {
                 ]) {
                     powershell '''
                         $artifactPath = "target/$env:ARTIFACT_NAME"
-
                         $destination = "s3://$env:S3_BUCKET/task-tracker/$env:ARTIFACT_NAME"
 
                         aws s3 cp "$artifactPath" "$destination" --region $env:AWS_REGION
@@ -109,92 +109,103 @@ pipeline {
             }
         }
 
-<<<<<<< HEAD
-// 6. Prepare Docker JAR
-=======
- // 6. Prepare Docker JAR
->>>>>>> 6d589494ee26cf4906c04e618f4bf8d25384c30a
-stage('Prepare Docker JAR') {
-    steps {
-        powershell '''
-            Copy-Item "target/$env:ARTIFACT_NAME" "app.jar" -Force
+        // 6. Prepare Docker JAR
+        stage('Prepare Docker JAR') {
+            steps {
+                powershell '''
+                    Copy-Item "target/$env:ARTIFACT_NAME" "app.jar" -Force
 
-            if (-not (Test-Path "app.jar")) {
-                throw "Docker JAR preparation failed"
+                    if (-not (Test-Path "app.jar")) {
+                        throw "Docker JAR preparation failed"
+                    }
+
+                    Write-Host "Docker JAR prepared successfully"
+                '''
             }
+        }
 
-            Write-Host "Docker JAR prepared successfully"
-<<<<<<< HEAD
-=======
-        '''
-    }
-}
         // 7. Build Docker Image
-stage('Build Docker Image') {
-    steps {
-        script {
-            env.LOCAL_IMAGE = "${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
-            env.ECR_IMAGE = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
-        }
-
-        powershell '''
-            docker build -t "$env:LOCAL_IMAGE" .
-
-            if ($LASTEXITCODE -ne 0) {
-                throw "Docker build failed"
-            }
->>>>>>> 6d589494ee26cf4906c04e618f4bf8d25384c30a
-        '''
-    }
-}
-
-// 7. Build Docker Image
-stage('Build Docker Image') {
-    steps {
-        script {
-            env.LOCAL_IMAGE = "${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
-            env.ECR_IMAGE = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
-        }
-
-        powershell '''
-            docker build -t "$env:LOCAL_IMAGE" .
-
-            if ($LASTEXITCODE -ne 0) {
-                throw "Docker build failed"
-            }
-        '''
-    }
-}
-
-// 8. Check AWS ECR Access
-stage('Check AWS ECR Access') {
-    steps {
-        withCredentials([
-            string(credentialsId: 'aws-access-key-id',
-                   variable: 'AWS_ACCESS_KEY_ID'),
-
-            string(credentialsId: 'aws-secret-access-key',
-                   variable: 'AWS_SECRET_ACCESS_KEY')
-        ]) {
-            powershell '''
-                aws sts get-caller-identity
-
-                if ($LASTEXITCODE -ne 0) {
-                    throw "AWS authentication failed"
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    env.LOCAL_IMAGE = "${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
+                    env.ECR_IMAGE = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
                 }
 
-                aws ecr get-login-password --region $env:AWS_REGION | Out-Null
+                powershell '''
+                    docker build -t "$env:LOCAL_IMAGE" .
 
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Unable to generate ECR login token"
-                }
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker build failed"
+                    }
 
-                Write-Host "AWS identity and ECR token generation successful"
-            '''
+                    Write-Host "Docker image built: $env:LOCAL_IMAGE"
+                '''
+            }
         }
-    }
-}
-        // 8. Automatically create and push Git tag
+
+        // 8. Authenticate with AWS and ECR
+        stage('Login to ECR') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id',
+                           variable: 'AWS_ACCESS_KEY_ID'),
+
+                    string(credentialsId: 'aws-secret-access-key',
+                           variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    powershell '''
+                        aws sts get-caller-identity
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "AWS authentication failed"
+                        }
+
+                        $registry = "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com"
+
+                        aws ecr get-login-password --region $env:AWS_REGION | docker login --username AWS --password-stdin $registry
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "ECR login failed"
+                        }
+
+                        Write-Host "ECR login successful"
+                    '''
+                }
+            }
+        }
+
+        // 9. Tag Docker Image for ECR
+        stage('Tag Docker Image') {
+            steps {
+                powershell '''
+                    docker tag "$env:LOCAL_IMAGE" "$env:ECR_IMAGE"
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker tagging failed"
+                    }
+
+                    Write-Host "ECR image tag: $env:ECR_IMAGE"
+                '''
+            }
+        }
+
+        // 10. Push Docker Image to ECR
+        stage('Push Docker Image to ECR') {
+            steps {
+                powershell '''
+                    docker push "$env:ECR_IMAGE"
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker image push failed"
+                    }
+
+                    Write-Host "Docker image pushed successfully"
+                '''
+            }
+        }
+
+        // 11. Create and push Git tag
         stage('Create Git Tag') {
             steps {
                 withCredentials([
