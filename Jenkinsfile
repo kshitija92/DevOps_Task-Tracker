@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -5,8 +6,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'DevOps',
-                    url: 'https://github.com/kshitija92/DevOps_Task-Tracker.git'
+                checkout scm
             }
         }
 
@@ -16,35 +16,34 @@ pipeline {
             }
         }
 
-        
-stage('Identify JAR and Version') {
-    steps {
-        script {
-            def jarFile = powershell(
-                returnStdout: true,
-                script: '''
-                    $jar = Get-ChildItem target\\*.jar |
-                        Where-Object { $_.Name -notlike "*.original" } |
-                        Sort-Object LastWriteTime -Descending |
-                        Select-Object -First 1
+        stage('Identify JAR and Version') {
+            steps {
+                script {
+                    def jarFile = powershell(
+                        returnStdout: true,
+                        script: '''
+                            $jar = Get-ChildItem target\\*.jar |
+                                Where-Object { $_.Name -notlike "*.original" } |
+                                Sort-Object LastWriteTime -Descending |
+                                Select-Object -First 1
 
-                    if (-not $jar) {
-                        throw "JAR file not found"
-                    }
+                            if (-not $jar) {
+                                throw "JAR file not found"
+                            }
 
-                    Write-Output $jar.Name
-                '''
-            ).trim()
+                            Write-Output $jar.Name
+                        '''
+                    ).trim()
 
-            env.JAR_FILE = jarFile
-            env.IMAGE_TAG = jarFile.replace('.jar', '')
-            env.ECR_REPOSITORY = 'task-tracker'
+                    env.JAR_FILE = jarFile
+                    env.IMAGE_TAG = jarFile.replace('.jar', '')
+                    env.ECR_REPOSITORY = 'task-tracker'
 
-            echo "JAR file: ${env.JAR_FILE}"
-            echo "Docker image tag: ${env.IMAGE_TAG}"
+                    echo "JAR file: ${env.JAR_FILE}"
+                    echo "Docker image tag: ${env.IMAGE_TAG}"
+                }
+            }
         }
-    }
-}
 
         stage('Build Docker Image') {
             steps {
@@ -83,7 +82,6 @@ stage('Identify JAR and Version') {
                 bat "docker push 028231499843.dkr.ecr.ap-south-1.amazonaws.com/${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
             }
         }
-
     }
 
     post {
