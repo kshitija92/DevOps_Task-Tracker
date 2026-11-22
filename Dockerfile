@@ -1,11 +1,8 @@
-
 FROM eclipse-temurin:25-jre
 
 WORKDIR /app
 
-ARG JAR_FILE
-
-COPY ${JAR_FILE} app.jar
+COPY app.jar app.jar
 
 EXPOSE 8080
 
