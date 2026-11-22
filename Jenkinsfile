@@ -109,7 +109,11 @@ pipeline {
             }
         }
 
+<<<<<<< HEAD
 // 6. Prepare Docker JAR
+=======
+ // 6. Prepare Docker JAR
+>>>>>>> 6d589494ee26cf4906c04e618f4bf8d25384c30a
 stage('Prepare Docker JAR') {
     steps {
         powershell '''
@@ -120,6 +124,26 @@ stage('Prepare Docker JAR') {
             }
 
             Write-Host "Docker JAR prepared successfully"
+<<<<<<< HEAD
+=======
+        '''
+    }
+}
+        // 7. Build Docker Image
+stage('Build Docker Image') {
+    steps {
+        script {
+            env.LOCAL_IMAGE = "${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
+            env.ECR_IMAGE = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
+        }
+
+        powershell '''
+            docker build -t "$env:LOCAL_IMAGE" .
+
+            if ($LASTEXITCODE -ne 0) {
+                throw "Docker build failed"
+            }
+>>>>>>> 6d589494ee26cf4906c04e618f4bf8d25384c30a
         '''
     }
 }
