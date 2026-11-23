@@ -1,4 +1,295 @@
 
+// pipeline {
+//     agent any
+
+//     environment {
+//         AWS_REGION = 'ap-south-1'
+//         AWS_ACCOUNT_ID = '028231499843'
+//         ECR_REPOSITORY = 'task-tracker'
+//         S3_BUCKET = 'task-tracker-jenkins-artifacts-2026'
+//         GITHUB_REPO = 'https://github.com/kshitija92/DevOps_Task-Tracker.git'
+//     }
+
+//     stages {
+
+//         // 1. Checkout source code
+//         stage('Checkout') {
+//             steps {
+//                 git branch: 'development',
+//                     url: "${env.GITHUB_REPO}"
+//             }
+//         }
+
+//         // 2. Maven build
+//         stage('Build') {
+//             steps {
+//                 bat 'mvn -version'
+//                 bat 'mvn clean package'
+//             }
+//         }
+
+//         // 3. Prepare build-specific artifact and Docker version
+//         stage('Prepare Artifact') {
+//             steps {
+//                 script {
+//                     def artifactId = powershell(
+//                         returnStdout: true,
+//                         script: '''
+//                             (& mvn -q help:evaluate "-Dexpression=project.artifactId" "-DforceStdout").Trim()
+//                         '''
+//                     ).trim()
+
+//                     def version = powershell(
+//                         returnStdout: true,
+//                         script: '''
+//                             (& mvn -q help:evaluate "-Dexpression=project.version" "-DforceStdout").Trim()
+//                         '''
+//                     ).trim()
+
+//                     env.APP_ARTIFACT_ID = artifactId
+//                     env.APP_VERSION = version
+//                     env.IMAGE_TAG = "${version}-build-${env.BUILD_NUMBER}"
+//                     env.ARTIFACT_NAME = "${artifactId}-${version}-build-${env.BUILD_NUMBER}.jar"
+
+//                     powershell '''
+//                         $originalJar = "target/$env:APP_ARTIFACT_ID-$env:APP_VERSION.jar"
+//                         $newJar = "target/$env:ARTIFACT_NAME"
+
+//                         if (-not (Test-Path $originalJar)) {
+//                             throw "Original JAR not found: $originalJar"
+//                         }
+
+//                         Copy-Item $originalJar $newJar -Force
+
+//                         if (-not (Test-Path $newJar)) {
+//                             throw "Versioned JAR not created"
+//                         }
+
+//                         Write-Host "Created artifact: $newJar"
+//                     '''
+
+//                     echo "Application version: ${env.APP_VERSION}"
+//                     echo "Docker image tag: ${env.IMAGE_TAG}"
+//                     echo "Artifact name: ${env.ARTIFACT_NAME}"
+//                 }
+//             }
+//         }
+
+//         // 4. Archive artifact
+//         stage('Archive Artifact') {
+//             steps {
+//                 archiveArtifacts artifacts: "target/${env.ARTIFACT_NAME}",
+//                                  fingerprint: true
+//             }
+//         }
+
+//         // 5. Upload JAR to S3
+//         stage('Upload to S3') {
+//             steps {
+//                 withCredentials([
+//                     string(credentialsId: 'aws-access-key-id',
+//                            variable: 'AWS_ACCESS_KEY_ID'),
+
+//                     string(credentialsId: 'aws-secret-access-key',
+//                            variable: 'AWS_SECRET_ACCESS_KEY')
+//                 ]) {
+//                     powershell '''
+//                         $artifactPath = "target/$env:ARTIFACT_NAME"
+//                         $destination = "s3://$env:S3_BUCKET/task-tracker/$env:ARTIFACT_NAME"
+
+//                         aws s3 cp "$artifactPath" "$destination" --region $env:AWS_REGION
+
+//                         if ($LASTEXITCODE -ne 0) {
+//                             throw "S3 upload failed"
+//                         }
+
+//                         Write-Host "S3 upload successful"
+//                     '''
+//                 }
+//             }
+//         }
+
+//         // 6. Prepare Docker JAR
+//         stage('Prepare Docker JAR') {
+//             steps {
+//                 powershell '''
+//                     Copy-Item "target/$env:ARTIFACT_NAME" "app.jar" -Force
+
+//                     if (-not (Test-Path "app.jar")) {
+//                         throw "Docker JAR preparation failed"
+//                     }
+
+//                     Write-Host "Docker JAR prepared successfully"
+//                 '''
+//             }
+//         }
+
+//         // 7. Build Docker Image
+//         stage('Build Docker Image') {
+//             steps {
+//                 script {
+//                     env.LOCAL_IMAGE = "${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
+//                     env.ECR_IMAGE = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
+//                 }
+
+//                 powershell '''
+//                     docker build -t "$env:LOCAL_IMAGE" .
+
+//                     if ($LASTEXITCODE -ne 0) {
+//                         throw "Docker build failed"
+//                     }
+
+//                     Write-Host "Docker image built: $env:LOCAL_IMAGE"
+//                 '''
+//             }
+//         }
+
+//         // 8. Authenticate with AWS and ECR
+// stage('Login to ECR') {
+//     steps {
+//         withCredentials([
+//             string(credentialsId: 'aws-access-key-id',
+//                    variable: 'AWS_ACCESS_KEY_ID'),
+
+//             string(credentialsId: 'aws-secret-access-key',
+//                    variable: 'AWS_SECRET_ACCESS_KEY')
+//         ]) {
+//             powershell '''
+//                 $registry = "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com"
+
+//                 $password = aws ecr get-login-password --region $env:AWS_REGION
+
+//                 if ($LASTEXITCODE -ne 0 -or -not $password) {
+//                     throw "Unable to retrieve ECR login password"
+//                 }
+
+//                 docker login $registry --username AWS --password $password
+
+//                 if ($LASTEXITCODE -ne 0) {
+//                     throw "ECR login failed"
+//                 }
+
+//                 Write-Host "ECR login successful"
+//             '''
+//         }
+//     }
+// }
+
+//         // 9. Tag Docker Image for ECR
+//         stage('Tag Docker Image') {
+//             steps {
+//                 powershell '''
+//                     docker tag "$env:LOCAL_IMAGE" "$env:ECR_IMAGE"
+
+//                     if ($LASTEXITCODE -ne 0) {
+//                         throw "Docker tagging failed"
+//                     }
+
+//                     Write-Host "ECR image tag: $env:ECR_IMAGE"
+//                 '''
+//             }
+//         }
+
+//         // 10. Push Docker Image to ECR
+//         stage('Push Docker Image to ECR') {
+//             steps {
+//                 powershell '''
+//                     docker push "$env:ECR_IMAGE"
+
+//                     if ($LASTEXITCODE -ne 0) {
+//                         throw "Docker image push failed"
+//                     }
+
+//                     Write-Host "Docker image pushed successfully"
+//                 '''
+//             }
+//         }
+
+//         // 11. Create and push Git tag
+//         stage('Create Git Tag') {
+//             steps {
+//                 withCredentials([
+//                     usernamePassword(
+//                         credentialsId: 'github-tag-token',
+//                         usernameVariable: 'GIT_USERNAME',
+//                         passwordVariable: 'GIT_TOKEN'
+//                     )
+//                 ]) {
+//                     powershell '''
+//                         $tag = "v$env:IMAGE_TAG"
+
+//                         git config user.name "Jenkins"
+//                         git config user.email "jenkins@localhost"
+
+//                         git tag -a $tag -m "Jenkins build $env:BUILD_NUMBER - $env:APP_VERSION"
+
+//                         if ($LASTEXITCODE -ne 0) {
+//                             throw "Git tag creation failed"
+//                         }
+
+//                         $encoded = [Convert]::ToBase64String(
+//                             [Text.Encoding]::UTF8.GetBytes(
+//                                 "$env:GIT_USERNAME`:$env:GIT_TOKEN"
+//                             )
+//                         )
+
+//                         $header = "AUTHORIZATION: basic $encoded"
+
+//                         git -c http.extraheader="$header" push origin $tag
+
+//                         if ($LASTEXITCODE -ne 0) {
+//                             throw "Git tag push failed"
+//                         }
+
+//                         Write-Host "Git tag pushed: $tag"
+//                     '''
+//                 }
+//             }
+//         }
+//     }
+
+//     post {
+
+//         success {
+//             emailext(
+//                 subject: "SUCCESS: Task Tracker Build ${BUILD_NUMBER}",
+//                 body: """
+//                     <h2>Task Tracker Pipeline Successful</h2>
+//                     <p>Build Number: ${BUILD_NUMBER}</p>
+//                     <p>Application Version: ${APP_VERSION}</p>
+//                     <p>Artifact: ${ARTIFACT_NAME}</p>
+//                     <p>Docker Image: ${ECR_IMAGE}</p>
+//                     <p>Git Tag: v${IMAGE_TAG}</p>
+//                     <p>S3: s3://${S3_BUCKET}/task-tracker/${ARTIFACT_NAME}</p>
+//                     <p>Jenkins: ${BUILD_URL}</p>
+//                 """,
+//                 mimeType: 'text/html',
+//                 to: 'kshitijagaikwad92@gmail.com'
+//             )
+//         }
+
+//         failure {
+//             emailext(
+//                 subject: "FAILURE: Task Tracker Build ${BUILD_NUMBER}",
+//                 body: """
+//                     <h2>Task Tracker Pipeline Failed</h2>
+//                     <p>Build Number: ${BUILD_NUMBER}</p>
+//                     <p>Check the Jenkins console output.</p>
+//                     <p>Jenkins: ${BUILD_URL}</p>
+//                 """,
+//                 mimeType: 'text/html',
+//                 to: 'kshitijagaikwad92@gmail.com'
+//             )
+//         }
+
+//         always {
+//             echo 'Jenkins pipeline execution finished.'
+//         }
+//     }
+// }
+
+
+
 pipeline {
     agent any
 
@@ -23,8 +314,8 @@ pipeline {
         // 2. Maven build
         stage('Build') {
             steps {
-                bat 'mvn -version'
-                bat 'mvn clean package'
+                sh 'mvn -version'
+                sh 'mvn clean package'
             }
         }
 
@@ -32,18 +323,14 @@ pipeline {
         stage('Prepare Artifact') {
             steps {
                 script {
-                    def artifactId = powershell(
+                    def artifactId = sh(
                         returnStdout: true,
-                        script: '''
-                            (& mvn -q help:evaluate "-Dexpression=project.artifactId" "-DforceStdout").Trim()
-                        '''
+                        script: 'mvn -q help:evaluate -Dexpression=project.artifactId -DforceStdout'
                     ).trim()
 
-                    def version = powershell(
+                    def version = sh(
                         returnStdout: true,
-                        script: '''
-                            (& mvn -q help:evaluate "-Dexpression=project.version" "-DforceStdout").Trim()
-                        '''
+                        script: 'mvn -q help:evaluate -Dexpression=project.version -DforceStdout'
                     ).trim()
 
                     env.APP_ARTIFACT_ID = artifactId
@@ -51,21 +338,23 @@ pipeline {
                     env.IMAGE_TAG = "${version}-build-${env.BUILD_NUMBER}"
                     env.ARTIFACT_NAME = "${artifactId}-${version}-build-${env.BUILD_NUMBER}.jar"
 
-                    powershell '''
-                        $originalJar = "target/$env:APP_ARTIFACT_ID-$env:APP_VERSION.jar"
-                        $newJar = "target/$env:ARTIFACT_NAME"
+                    sh '''
+                        originalJar="target/${APP_ARTIFACT_ID}-${APP_VERSION}.jar"
+                        newJar="target/${ARTIFACT_NAME}"
 
-                        if (-not (Test-Path $originalJar)) {
-                            throw "Original JAR not found: $originalJar"
-                        }
+                        if [ ! -f "$originalJar" ]; then
+                            echo "Original JAR not found: $originalJar"
+                            exit 1
+                        fi
 
-                        Copy-Item $originalJar $newJar -Force
+                        cp "$originalJar" "$newJar"
 
-                        if (-not (Test-Path $newJar)) {
-                            throw "Versioned JAR not created"
-                        }
+                        if [ ! -f "$newJar" ]; then
+                            echo "Versioned JAR creation failed"
+                            exit 1
+                        fi
 
-                        Write-Host "Created artifact: $newJar"
+                        echo "Created artifact: $newJar"
                     '''
 
                     echo "Application version: ${env.APP_VERSION}"
@@ -83,43 +372,32 @@ pipeline {
             }
         }
 
-        // 5. Upload JAR to S3
+        // 5. Upload JAR to S3 using EC2 IAM role
         stage('Upload to S3') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key-id',
-                           variable: 'AWS_ACCESS_KEY_ID'),
+                sh '''
+                    artifactPath="target/${ARTIFACT_NAME}"
+                    destination="s3://${S3_BUCKET}/task-tracker/${ARTIFACT_NAME}"
 
-                    string(credentialsId: 'aws-secret-access-key',
-                           variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    powershell '''
-                        $artifactPath = "target/$env:ARTIFACT_NAME"
-                        $destination = "s3://$env:S3_BUCKET/task-tracker/$env:ARTIFACT_NAME"
+                    aws s3 cp "$artifactPath" "$destination" --region "$AWS_REGION"
 
-                        aws s3 cp "$artifactPath" "$destination" --region $env:AWS_REGION
-
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "S3 upload failed"
-                        }
-
-                        Write-Host "S3 upload successful"
-                    '''
-                }
+                    echo "S3 upload successful"
+                '''
             }
         }
 
         // 6. Prepare Docker JAR
         stage('Prepare Docker JAR') {
             steps {
-                powershell '''
-                    Copy-Item "target/$env:ARTIFACT_NAME" "app.jar" -Force
+                sh '''
+                    cp "target/${ARTIFACT_NAME}" app.jar
 
-                    if (-not (Test-Path "app.jar")) {
-                        throw "Docker JAR preparation failed"
-                    }
+                    if [ ! -f app.jar ]; then
+                        echo "Docker JAR preparation failed"
+                        exit 1
+                    fi
 
-                    Write-Host "Docker JAR prepared successfully"
+                    echo "Docker JAR prepared successfully"
                 '''
             }
         }
@@ -132,60 +410,35 @@ pipeline {
                     env.ECR_IMAGE = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
                 }
 
-                powershell '''
-                    docker build -t "$env:LOCAL_IMAGE" .
+                sh '''
+                    docker build -t "$LOCAL_IMAGE" .
 
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Docker build failed"
-                    }
-
-                    Write-Host "Docker image built: $env:LOCAL_IMAGE"
+                    echo "Docker image built: $LOCAL_IMAGE"
                 '''
             }
         }
 
-        // 8. Authenticate with AWS and ECR
-stage('Login to ECR') {
-    steps {
-        withCredentials([
-            string(credentialsId: 'aws-access-key-id',
-                   variable: 'AWS_ACCESS_KEY_ID'),
+        // 8. Login to ECR using EC2 IAM role
+        stage('Login to ECR') {
+            steps {
+                sh '''
+                    registry="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-            string(credentialsId: 'aws-secret-access-key',
-                   variable: 'AWS_SECRET_ACCESS_KEY')
-        ]) {
-            powershell '''
-                $registry = "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com"
+                    aws ecr get-login-password --region "$AWS_REGION" |
+                    docker login "$registry" --username AWS --password-stdin
 
-                $password = aws ecr get-login-password --region $env:AWS_REGION
-
-                if ($LASTEXITCODE -ne 0 -or -not $password) {
-                    throw "Unable to retrieve ECR login password"
-                }
-
-                docker login $registry --username AWS --password $password
-
-                if ($LASTEXITCODE -ne 0) {
-                    throw "ECR login failed"
-                }
-
-                Write-Host "ECR login successful"
-            '''
+                    echo "ECR login successful"
+                '''
+            }
         }
-    }
-}
 
         // 9. Tag Docker Image for ECR
         stage('Tag Docker Image') {
             steps {
-                powershell '''
-                    docker tag "$env:LOCAL_IMAGE" "$env:ECR_IMAGE"
+                sh '''
+                    docker tag "$LOCAL_IMAGE" "$ECR_IMAGE"
 
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Docker tagging failed"
-                    }
-
-                    Write-Host "ECR image tag: $env:ECR_IMAGE"
+                    echo "ECR image tag: $ECR_IMAGE"
                 '''
             }
         }
@@ -193,14 +446,10 @@ stage('Login to ECR') {
         // 10. Push Docker Image to ECR
         stage('Push Docker Image to ECR') {
             steps {
-                powershell '''
-                    docker push "$env:ECR_IMAGE"
+                sh '''
+                    docker push "$ECR_IMAGE"
 
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Docker image push failed"
-                    }
-
-                    Write-Host "Docker image pushed successfully"
+                    echo "Docker image pushed successfully"
                 '''
             }
         }
@@ -215,33 +464,21 @@ stage('Login to ECR') {
                         passwordVariable: 'GIT_TOKEN'
                     )
                 ]) {
-                    powershell '''
-                        $tag = "v$env:IMAGE_TAG"
+                    sh '''
+                        set -e
+
+                        tag="v${IMAGE_TAG}"
 
                         git config user.name "Jenkins"
                         git config user.email "jenkins@localhost"
 
-                        git tag -a $tag -m "Jenkins build $env:BUILD_NUMBER - $env:APP_VERSION"
+                        git tag -a "$tag" -m "Jenkins build ${BUILD_NUMBER} - ${APP_VERSION}"
 
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Git tag creation failed"
-                        }
+                        encoded=$(printf '%s' "${GIT_USERNAME}:${GIT_TOKEN}" | base64 | tr -d '\\n')
 
-                        $encoded = [Convert]::ToBase64String(
-                            [Text.Encoding]::UTF8.GetBytes(
-                                "$env:GIT_USERNAME`:$env:GIT_TOKEN"
-                            )
-                        )
+                        git -c http.extraheader="AUTHORIZATION: basic ${encoded}" push origin "$tag"
 
-                        $header = "AUTHORIZATION: basic $encoded"
-
-                        git -c http.extraheader="$header" push origin $tag
-
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Git tag push failed"
-                        }
-
-                        Write-Host "Git tag pushed: $tag"
+                        echo "Git tag pushed: $tag"
                     '''
                 }
             }
