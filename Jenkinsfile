@@ -194,7 +194,6 @@ pipeline {
     }
 
     post {
-
         success {
             emailext(
                 subject: "SUCCESS: Task Tracker Build ${BUILD_NUMBER}",
